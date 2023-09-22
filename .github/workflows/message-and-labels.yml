@@ -1,0 +1,19 @@
+name: Decorate PR based on commit message content.
+
+on:
+  - pull_request
+  - push
+
+jobs:
+  find-breaking-mark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check for Exclamation Mark in Commit Messages
+        uses: actions/github-script@v6
+        with:
+          script: |
+            console.log(github.event.commits);
+            const commit = github.event.commits.find(commit => commit.message.includes('!:'));
+            console.log(commit);
+            console.log(commit.message);
