@@ -2,7 +2,15 @@ name: Decorate PR based on commit message content.
 
 on:
   - pull_request
-  - push
+  # - push # this event has no PR number, so not useful for scripting!
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: read
 
 jobs:
   find-breaking-mark:
@@ -13,7 +21,28 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            console.log(github.event.commits);
-            const commit = github.event.commits.find(commit => commit.message.includes('!:'));
-            console.log(commit);
-            console.log(commit.message);
+            const BREAKING_MESSAGE = "⚠️ Breaking";
+            const BREAKING_LABEL = "breaking";
+            const issue_number = context.number || context?.issue?.number || context?.pull_request?.number;
+            const { owner, repo } = context.repo;
+
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const isMarked = comments.find(comment => comment.body.includes(BREAKING_MESSAGE));
+
+            const { data: commits } = await github.rest.pulls.listCommits({ owner, repo, pull_number: issue_number });
+            // console.log("commits", commits);
+            const isBreaking = !!commits.find(commit => commit.commit.message.includes("!:"));
+
+            console.log({ issue_number, owner, repo, isMarked, isBreaking });
+
+            if (isBreaking && !isMarked) {
+              // console.log("mark");
+              await github.rest.issues.createComment({ issue_number, owner, repo, body: BREAKING_MESSAGE });
+              await github.rest.issues.addLabels({ issue_number, owner, repo, labels: [BREAKING_LABEL] });
+            }
+            if (!isBreaking && isMarked) {
+              // console.log("unmark");
+              await github.rest.issues.deleteComment({ issue_number, owner, repo, comment_id: isMarked.id });
+              // https://octokit.github.io/rest.js/v20#issues-remove-label
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: BREAKING_LABEL });
+            }
